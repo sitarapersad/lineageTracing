@@ -1,0 +1,3 @@
+[submodule "perfect_phylogeny"]
+	path = perfect_phylogeny
+	url = https://github.com/mcmero/perfect_phylogeny.git

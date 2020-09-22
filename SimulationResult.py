@@ -11,22 +11,56 @@ import seaborn as sns
 sns.set()
 sns.set(font_scale=1)
 
+def load_simulation(path):
+    simulation = SimulationResult
 
 class SimulationResult():
-    def __init__(self, label, tree_depth, num_sites, run=None):
+    def __init__(self, label, init_cells, tree_depth, num_sites, edit_probs, run=None):
         self.label = label
+        self.init_cells = init_cells
         self.run = run 
         
         self.tree_depth = tree_depth
         self.num_sites = num_sites
         
+        self.edit_probs = edit_probs 
+        
+        self._edit_prob_df = None
+        
         self.unique_cells = None
         self.open_sites = None 
         
+        self.feature_matrix = None
         self.random_attr = {}
+       
+    def get_edit_probs(self):
+        def dels_to_df(pad_dels):
+            df = pd.DataFrame(pad_dels.reshape(-1)).T
+            # Compute correct column names to index mutations 
+            t = np.tile(np.arange(pad_dels.shape[1]), pad_dels.shape[0]).reshape(pad_dels.shape[0], -1)
+
+            tt = t+1000*np.arange(t.shape[0]).reshape(-1,1)
+
+            df.columns = tt.reshape(-1)
+            return df
+        
+        if self._edit_prob_df is None:
+            self._edit_prob_df = dels_to_df(self.edit_probs)
+        return self._edit_prob_df
+    
+    
         
     def add_full_cell_record(self, cr):
         self.full_cell_record = cr
+       
+    def get_full_cell_record(self):
+        return copy.deepcopy(self.full_cell_record)
+    
+    def add_sampled_tree(self, true_tree):
+        self.true_tree = true_tree
+       
+    def get_sampled_tree(self):
+        return copy.deepcopy(self.true_tree)
         
     def add_full_edit_record(self, er):
         self.full_edit_record = er
@@ -88,7 +122,7 @@ class SimulationResult():
 
         """
         return copy.deepcopy(self.truth_tape)
-
+        
     def add_prevalance_tape(self, pt):
         """
 
@@ -119,7 +153,7 @@ class SimulationResult():
         """
         self.num_recur_tape = nrt
 
-    def get_first_gen_tape(self):
+    def get_num_recur_tape(self):
         """
 
         """
@@ -136,6 +170,31 @@ class SimulationResult():
 
         """
         return copy.deepcopy(self.conflicting_muts)
+
+    def save(self, path):
+        
+        self.full_cell_record.to_csv()
+        self.full_edit_record.to_csv()
+        
+        self.full_open_sites
+        self.true_tree
+        self.conflict_matrix
+        
+        self.plot_full_edits_made(save_as=None)
+        
+        self.truth_tape
+        self.prevalence_tape
+       
+        self.first_gen_tape
+        self.num_recur_tape
+        
+        self.conflicting_muts
+        
+        fc = self.get_final_cells()
+        fc.to_csv() 
+        
+        fm = self.get_feature_matrix()
+        fm.to_csv()
         
     def add_final_cells(self, final_cells):
         self.final_cells = final_cells
@@ -143,6 +202,34 @@ class SimulationResult():
     def get_final_cells(self):
         return copy.deepcopy(self.final_cells)
     
+    def get_feature_matrix(self):
+        """ 
+        Convert the final cells matrix to a character matrix
+        Convert each unique (col, non-zero entry) into a character
+        """
+        
+        if self.feature_matrix is None:
+            f = self.get_final_cells()
+            
+            
+            new_f = (f+f.columns.values*1000).astype(int)
+            n_values = new_f.max().max() + 1
+            xxx = np.zeros((new_f.shape[0], n_values))
+            for col in new_f.columns:
+                values = new_f[col].astype(int) 
+                xxx += np.eye(n_values)[values]
+
+            labels = np.where(xxx.sum(0)>0)[0]
+
+            xx = pd.DataFrame(xxx[:, labels])
+            xx.columns = labels
+
+            self.feature_matrix = xx.loc[:, xx.columns%1000 != 0]
+        
+        return copy.deepcopy(self.feature_matrix)
+
+
+
     def add_subsampled_ix(self, ix):
         self.subsampled_ix = ix
         
@@ -238,9 +325,12 @@ class SimulationResult():
         
         
     def compute_final_cells(self):
-        if self.final_cells is None:
-            final_cells = pd.DataFrame(self.cell_record[-1])
-            self.final_cells = final_cells
+        final_cells = pd.DataFrame(self.cell_record[-1])
+        self.final_cells = final_cells
+        return copy.deepcopy(self.final_cells)
+    
+    def get_final_cells(self):
+        
         return copy.deepcopy(self.final_cells)
 
     def get_open_sites(self):

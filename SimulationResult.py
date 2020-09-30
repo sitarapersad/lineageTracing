@@ -61,6 +61,45 @@ class SimulationResult():
        
     def get_sampled_tree(self):
         return copy.deepcopy(self.true_tree)
+    
+    def add_sampled_network(self):
+        
+        import networkx as nx
+        from Cassiopeia.TreeSolver.Node import Node
+
+        # Create networkx DiGraph to represent true_tree 
+        tree = nx.DiGraph()
+
+        cell_record = self.get_cell_record()
+
+        # Create nodes representing the leaves
+        level_ix = self.subsampled_ix
+        record = cell_record[-1]
+        tips = [Node(str(i), record[i]) for i in np.arange(len(level_ix))]
+
+        for j in (range(self.tree_depth-1, -1, -1)):
+            print(j, 'j')
+            # Map the subsampled cells from the preceding level as parents/children
+            parent_ix = level_ix//2
+            parent_dict = {}
+            record = cell_record[j]
+
+            parent_ix_map = dict(zip(np.unique(parent_ix), np.arange(len(np.unique(parent_ix)))))        
+
+            for i, ix in enumerate(parent_ix):
+                # Get record corresponding to parent 
+                parent = parent_dict.get(ix, Node(str(ix), record[parent_ix_map[ix]]))
+                parent_dict[ix] = parent
+                tree.add_edges_from([(parent, tips[i])])
+
+            # These are the new base layer, and we continue to build upwards
+            level_ix = pd.unique(parent_ix)
+            tips = [parent_dict[ix] for ix in level_ix]
+
+        self.true_network = tree
+
+    def get_sampled_network(self):
+        return copy.deepcopy(self.true_network)
         
     def add_full_edit_record(self, er):
         self.full_edit_record = er

@@ -13,6 +13,9 @@ from skbio import TreeNode
 from SimulationResult import SimulationResult
 from identify_recurrent import identify_recurrent
 
+import networkx as nx
+from Cassiopeia.TreeSolver.Node import Node
+
 def performCRISPR(cell_recorder, 
                   num_edit_sites, 
                   reproduction_prob,
@@ -110,9 +113,11 @@ def lineageSimulationFast(label, tree_depth, num_sites, deletions_probs,
     from skbio import TreeNode
 
     level_ix = simulation.subsampled_ix
+    
+    
     # Create tips corresponding to each of the sampled cells
     tips = [TreeNode(str(i)) for i in np.arange(len(level_ix))]
-
+    
     for j in enumerate(range(tree_depth-1, -1, -1)):
         # Map the subsampled cells from the preceding level as parents/children
         parent_ix = level_ix//2
@@ -130,10 +135,6 @@ def lineageSimulationFast(label, tree_depth, num_sites, deletions_probs,
     true_tree = tips[0]
     simulation.add_sampled_tree(true_tree)
 
-
-    print('ix per gen')
-    for i in original_ix:
-        print(i.shape)
     # Simulating a tree: we start out with a single cell which is unmutated
     cell_recorder = np.zeros((init_cells, num_sites))
     min_depth = np.nan
@@ -165,12 +166,15 @@ def lineageSimulationFast(label, tree_depth, num_sites, deletions_probs,
         
         record.append(cell_recorder)
         edits_made.append(novel_edits)
-        
+    
+    
     simulation.add_cell_record(record)
     simulation.add_edit_record(edits_made)
-
+    
     simulation.subsample_time = time.time()-start 
     
+    simulation.add_sampled_network()
+                              
     # Plot the number of mutations that occurred per generation
     simulation.plot_edits_made()
     

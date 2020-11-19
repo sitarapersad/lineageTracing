@@ -84,7 +84,7 @@ def get_new_ix(y, parent_reix, tree_depth):
 
 def lineageSimulationFast(label, tree_depth, num_sites, deletions_probs, 
                           mutation_probs, edit_probs, compute_tree=False, 
-                          init_cells=1, n_subsample=10000):
+                          init_cells=1, n_subsample=10000, missing_fraction=0):
     
     start = time.time()
     simulation = SimulationResult(label, init_cells, tree_depth, num_sites, edit_probs, run=None)
@@ -102,8 +102,6 @@ def lineageSimulationFast(label, tree_depth, num_sites, deletions_probs,
     parent_reix = dict(zip(np.arange(init_cells), np.arange(init_cells)))
 
     subsampled_ix = np.sort(np.random.choice(2**tree_depth, n_subsample, replace=False))
-    
-    print(subsampled_ix, 'subsamp')
     
     simulation.add_subsampled_ix(subsampled_ix)
     
@@ -167,7 +165,15 @@ def lineageSimulationFast(label, tree_depth, num_sites, deletions_probs,
         record.append(cell_recorder)
         edits_made.append(novel_edits)
     
-    
+    if missing_fraction > 0:
+        # Randomly drop mutations to introduce missingness in data 
+        prop = int(cell_r[-1].size * missing_fraction)
+        #Randomly choose indices of the numpy array:
+        i = [random.choice(range(cell_r[-1].shape[0])) for _ in range(prop)]
+        j = [random.choice(range(cell_r[-1].shape[1])) for _ in range(prop)]
+
+        cell_r[-1][i,j] = np.NaN
+
     simulation.add_cell_record(record)
     simulation.add_edit_record(edits_made)
     

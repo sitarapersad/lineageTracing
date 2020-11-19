@@ -15,10 +15,11 @@ def load_simulation(path):
     simulation = SimulationResult
 
 class SimulationResult():
-    def __init__(self, label, init_cells, tree_depth, num_sites, edit_probs, run=None):
+    def __init__(self, label, init_cells, tree_depth, num_sites, edit_probs, run=None, missing_fraction=0):
         self.label = label
         self.init_cells = init_cells
         self.run = run 
+        self.missing_fraction = missing_fraction
         
         self.tree_depth = tree_depth
         self.num_sites = num_sites
@@ -75,10 +76,9 @@ class SimulationResult():
         # Create nodes representing the leaves
         level_ix = self.subsampled_ix
         record = cell_record[-1]
-        tips = [Node(str(i), record[i]) for i in np.arange(len(level_ix))]
+        tips = [Node(str(i), record[i].astype(int)) for i in np.arange(len(level_ix))]
 
         for j in (range(self.tree_depth-1, -1, -1)):
-            print(j, 'j')
             # Map the subsampled cells from the preceding level as parents/children
             parent_ix = level_ix//2
             parent_dict = {}
@@ -88,7 +88,7 @@ class SimulationResult():
 
             for i, ix in enumerate(parent_ix):
                 # Get record corresponding to parent 
-                parent = parent_dict.get(ix, Node(str(ix), record[parent_ix_map[ix]]))
+                parent = parent_dict.get(ix, Node(str(ix), record[parent_ix_map[ix]].astype(int)))
                 parent_dict[ix] = parent
                 tree.add_edges_from([(parent, tips[i])])
 

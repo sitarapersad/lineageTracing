@@ -220,6 +220,7 @@ def cluster_nx(character_matrix, probs=None, names=None):
     
     return tree, {'Ds':Ds, 'joins':joins}
 
+
 def cluster(feature_matrix, prob_features, names=None, result_constructor=None):
     fm = copy.deepcopy(feature_matrix)
     fm = fm.values 

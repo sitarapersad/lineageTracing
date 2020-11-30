@@ -11,6 +11,9 @@ import seaborn as sns
 sns.set()
 sns.set(font_scale=1)
 
+import networkx as nx
+from cassiopeia.TreeSolver.Node import Node
+        
 def load_simulation(path):
     simulation = SimulationResult
 
@@ -65,36 +68,37 @@ class SimulationResult():
     
     def add_sampled_network(self):
         
-        import networkx as nx
-        from Cassiopeia.TreeSolver.Node import Node
+        def format_char_vec(a):
+            nan_a = np.isnan(a)
+            a = a.astype(np.int).astype(str)
+            a[nan_a] = '-'
+            return list(a)
 
         # Create networkx DiGraph to represent true_tree 
         tree = nx.DiGraph()
 
         cell_record = self.get_cell_record()
+        keep_labels = self.get_node_labels()
+        parent_ix_levels = self.get_parent_child_map()
 
         # Create nodes representing the leaves
-        level_ix = self.subsampled_ix
-        record = cell_record[-1]
-        tips = [Node(str(i), record[i].astype(int)) for i in np.arange(len(level_ix))]
 
-        for j in (range(self.tree_depth-1, -1, -1)):
-            # Map the subsampled cells from the preceding level as parents/children
-            parent_ix = level_ix//2
-            parent_dict = {}
-            record = cell_record[j]
+        record = cell_record[0]
+        prev_level = [Node(label, format_char_vec(record[i])) for i, label in enumerate(keep_labels[0])]
 
-            parent_ix_map = dict(zip(np.unique(parent_ix), np.arange(len(np.unique(parent_ix)))))        
-
-            for i, ix in enumerate(parent_ix):
-                # Get record corresponding to parent 
-                parent = parent_dict.get(ix, Node(str(ix), record[parent_ix_map[ix]].astype(int)))
-                parent_dict[ix] = parent
-                tree.add_edges_from([(parent, tips[i])])
-
-            # These are the new base layer, and we continue to build upwards
-            level_ix = pd.unique(parent_ix)
-            tips = [parent_dict[ix] for ix in level_ix]
+        for level, mapping in enumerate(parent_ix_levels):
+            # Construct edges from this level to the next level
+            level_labels = keep_labels[level+1]
+            record = cell_record[level+1]
+            current_level = []
+            for child in mapping:
+                # Create a child node
+                child_node = Node(level_labels[child], format_char_vec(record[child]))
+                parent = prev_level[mapping[child]]
+                tree.add_edges_from([(parent, child_node)])
+                current_level.append(child_node)
+            # Current level finished adding to tree, move on to lower level
+            prev_level = current_level
 
         self.true_network = tree
 
@@ -235,11 +239,8 @@ class SimulationResult():
         fm = self.get_feature_matrix()
         fm.to_csv()
         
-    def add_final_cells(self, final_cells):
-        self.final_cells = final_cells
-
     def get_final_cells(self):
-        return copy.deepcopy(self.final_cells)
+        return pd.copy(self.final_cells.astype(int), deep=True)
     
     def get_feature_matrix(self):
         """ 
@@ -250,27 +251,52 @@ class SimulationResult():
         if self.feature_matrix is None:
             f = self.get_final_cells()
             
+            from utilities import binarize_character_matrix, character_matrix_to_labels
             
-            new_f = (f+f.columns.values*1000).astype(int)
-            n_values = new_f.max().max() + 1
-            xxx = np.zeros((new_f.shape[0], n_values))
-            for col in new_f.columns:
-                values = new_f[col].astype(int) 
-                xxx += np.eye(n_values)[values]
-
-            labels = np.where(xxx.sum(0)>0)[0]
-
-            xx = pd.DataFrame(xxx[:, labels])
-            xx.columns = labels
-
-            self.feature_matrix = xx.loc[:, xx.columns%1000 != 0]
-        
+            str_labels = character_matrix_to_labels(f)
+            self.cell_id_to_char_vec = dict(zip(f.index, str_labels))
+            
+            inv_map = {}
+            for k, v in self.cell_id_to_char_vec.items():
+                inv_map[v] = inv_map.get(v, []) + [k]
+            self.char_vec_to_cell_id = inv_map
+            
+            f.index = str_labels
+            
+            
+            self.feature_matrix = binarize_character_matrix(f)
+            
         return copy.deepcopy(self.feature_matrix)
 
 
 
     def add_subsampled_ix(self, ix):
         self.subsampled_ix = ix
+        
+    def add_node_labels(self, labels):
+        self.node_labels = labels
+       
+    def get_node_labels(self):
+        return copy.deepcopy(self.node_labels)
+        
+    def add_parent_child_map(self, parent_child_map):
+        self.parent_child_map = parent_child_map
+        
+    def get_parent_child_map(self):
+        '''
+        Stores a list where the ith element maps the indices of children on level i+1 to the indices of their parents 
+        on level i
+        
+        e.g [{0:0,1:0}, {0:0, 1:1, 2:1}] would be the parent/child map for the tree:
+           __0_____0
+       0 _/      __1
+          \__1__/
+                \__2
+        '''
+        try:
+            return copy.deepcopy(self.parent_child_map)
+        except:
+            raise ValueError('No parent/child map stored') 
         
     def add_cell_record(self, cr):
         """
@@ -365,11 +391,13 @@ class SimulationResult():
         
     def compute_final_cells(self):
         final_cells = pd.DataFrame(self.cell_record[-1])
-        self.final_cells = final_cells
-        return copy.deepcopy(self.final_cells)
+        self.final_cells = final_cells.astype(int)
+        
+        self.final_cells = self.final_cells.drop_duplicates()
+        
+        return self.final_cells.copy(deep=True)
     
     def get_final_cells(self):
-        
         return copy.deepcopy(self.final_cells)
 
     def get_open_sites(self):

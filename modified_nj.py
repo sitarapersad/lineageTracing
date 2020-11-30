@@ -1,10 +1,11 @@
 import numpy as np
 from scipy.spatial.distance import pdist, squareform
-from skbio.tree import TreeNode
+from Node import CellGroupNode
+
 import copy
 import time 
 
-def mod_nj(feature_matrix, prob_features, names=None, result_constructor=None):
+def mod_nj(feature_matrix, prob_features, result_constructor=None):
     fm = copy.deepcopy(feature_matrix)
     
     fm = fm.values 
@@ -14,8 +15,7 @@ def mod_nj(feature_matrix, prob_features, names=None, result_constructor=None):
     Rs = [] 
     joins = []
     
-    if names is None:
-        names = np.arange(fm.shape[0])
+    names = feature_matrix.index 
        
     # Determine the lcas for each pair of sites
 #     lcas = np.zeros((fm.shape[0], fm.shape[0], fm.shape[1]))
@@ -34,7 +34,9 @@ def mod_nj(feature_matrix, prob_features, names=None, result_constructor=None):
     tree_nodes = {}
     
     for name in names:
-        tree_nodes[name] = TreeNode(name=str(name))
+        node = CellGroupNode(name=str(name))
+        node.add_feature_matrix()
+        tree_nodes[name] = 
         
     print('Starting with {0} nodes'.format(len(D)))
     new_name = len(D)
@@ -74,7 +76,7 @@ def mod_nj(feature_matrix, prob_features, names=None, result_constructor=None):
         
         child_i = tree_nodes[names[min_i]]
         child_j = tree_nodes[names[min_j]]
-        new_node = TreeNode(name=str(new_name), length=None, parent=None, children=[child_i, child_j])
+        new_node = CellGroupNode(name=f'nj-node={new_name}', length=None, parent=None, children=[child_i, child_j])
 
             
         child_i.parent = new_node
@@ -113,7 +115,7 @@ def mod_nj(feature_matrix, prob_features, names=None, result_constructor=None):
     
     # Merge the last two remaining sites to complete the tree
     child1, child2 = tree_nodes[names[0]], tree_nodes[names[1]]
-    root = TreeNode(name = str(new_name), children=[child1, child2])
+    root = CellGroupNode(name = f'nj-node={new_name}', children=[child1, child2])
     child1.parent = root
     child2.parent = root
     

@@ -31,17 +31,10 @@ def cassiopeia_reconstruct(simulation):
     cass_time = time.time()-t
     cass_network = reconstructed_network_greedy[0]
     true_tree = simulation.get_cleaned_tree()
-    true_network = utilities.convert_tree_to_nx(true_tree) 
-    
-    cass_score = score_triplets(true_network, cass_network, number_of_trials = 5000, min_size_depth = 20)
-
-    # # Why is the score_triplets not 1??
-    base_score = score_triplets(true_network, true_network, number_of_trials = 5000, min_size_depth = 20)
-
     cass_tree, duplicates = utilities.convert_nx_to_tree(cass_network.network)
     
     our_score = utilities.triplets_correct(true_tree, cass_tree)
 
-    print('Baseline:', base_score, 'Cassiopeia:', our_score)
+    print('Cassiopeia:', our_score)
 
-    return cass_tree, {'cass_score':cass_score, 'base_score':base_score, 'our_score':our_score}
+    return cass_tree, {'our_score':our_score}

@@ -1,11 +1,14 @@
+from skbio import TreeNode
 import numpy as np
-from scipy.spatial.distance import pdist, squareform
+from scipy.spatial.distance import squareform, pdist
 from Node import CellGroupNode
 
-import copy
+
+import copy 
 import time 
 
-def mod_nj(feature_matrix, prob_features, result_constructor=None):
+
+def mod_nj(feature_matrix, character_matrix, prob_features, result_constructor=None):
     fm = copy.deepcopy(feature_matrix)
     
     fm = fm.values 
@@ -17,12 +20,6 @@ def mod_nj(feature_matrix, prob_features, result_constructor=None):
     
     names = feature_matrix.index 
        
-    # Determine the lcas for each pair of sites
-#     lcas = np.zeros((fm.shape[0], fm.shape[0], fm.shape[1]))
-#     for i in range(fm.shape[0]):
-#         for j in range(i+1, fm.shape[0]):
-#             lcas[i,j] = fm[i]*fm[j]
-#             lcas[j,i] = lcas[i,j]
     
     log_prob_features = np.log(prob_features)
     log_prob_features[-log_prob_features == np.inf] = -10000 #hacky
@@ -35,10 +32,12 @@ def mod_nj(feature_matrix, prob_features, result_constructor=None):
     
     for name in names:
         node = CellGroupNode(name=str(name))
-        node.add_feature_matrix()
-        tree_nodes[name] = 
+        # Associate feature matrix and character matrix to leaf nodes 
+        node.add_feature_matrix(feature_matrix.loc[name])
+        node.add_character_matrix(character_matrix.loc[name])
+        tree_nodes[name] = node 
         
-    print('Starting with {0} nodes'.format(len(D)))
+    print('Starting NJ with {0} nodes'.format(len(D)))
     new_name = len(D)
     
     new_lcas = {}
@@ -76,8 +75,10 @@ def mod_nj(feature_matrix, prob_features, result_constructor=None):
         
         child_i = tree_nodes[names[min_i]]
         child_j = tree_nodes[names[min_j]]
-        new_node = CellGroupNode(name=f'nj-node={new_name}', length=None, parent=None, children=[child_i, child_j])
-
+        new_node = CellGroupNode(name=f'nj-node={new_name}',
+                                 length=None, parent=None, 
+                                 children=[child_i, child_j])
+        
             
         child_i.parent = new_node
         child_j.parent = new_node
@@ -120,4 +121,3 @@ def mod_nj(feature_matrix, prob_features, result_constructor=None):
     child2.parent = root
     
     return root, {'Qs':Qs, 'Ds':Ds, 'Rs':Rs, 'joins':joins, 'lcas':new_lcas}
-

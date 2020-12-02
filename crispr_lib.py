@@ -4,6 +4,7 @@ import torch
 import os
 import time 
 import copy
+import random
 import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set()
@@ -79,11 +80,10 @@ def get_new_ix(y, parent_reix, tree_depth):
 
     return to_keep, new_ix
 
-def simulate_imbalanced_tree(num_init_cells, init_death_prob = 0.1, init_repr_prob = 0.75, tree_depth=15):
+def simulate_imbalanced_tree(num_init_cells, init_death_prob = 0.1, init_repr_prob = 0.75, cancer_prob = 1e-3, tree_depth=15):
     num_cells = num_init_cells
     death_probs = [init_death_prob]*num_cells
     repr_probs = [init_repr_prob]*num_cells
-    cancer_prob = 1e-3
 
 
     init_cells = [str(i) for i in np.arange(num_cells)]
@@ -124,15 +124,18 @@ def simulate_imbalanced_tree(num_init_cells, init_death_prob = 0.1, init_repr_pr
     
 def lineageSimulationImbalanced(label, tree_depth, num_sites, deletions_probs, 
                           mutation_probs, edit_probs, compute_tree=False, 
-                          init_cells=1, n_subsample=10000, missing_fraction=0, identify_recurrent_muts=True):
+                          init_cells=1, n_subsample=10000, missing_fraction=0, 
+                          init_death_prob = 0.1, init_repr_prob = 0.75, cancer_prob = 1e-3, 
+                          identify_recurrent_muts=True):
     
     start = time.time()
     simulation = SimulationResult(label, init_cells, tree_depth, num_sites, edit_probs, run=None)
     
     
     num_cells, cell_names, parent_ix, repetition_coefs_list = simulate_imbalanced_tree(num_init_cells=init_cells, 
-                                                                init_death_prob = 0.1, 
-                                                                init_repr_prob = 0.75, 
+                                                                init_death_prob = init_death_prob, 
+                                                                init_repr_prob = init_repr_prob, 
+                                                                cancer_prob = cancer_prob, 
                                                                 tree_depth = tree_depth)
     
     
@@ -165,8 +168,6 @@ def lineageSimulationImbalanced(label, tree_depth, num_sites, deletions_probs,
     parent_ix_levels = []
 
     for depth, level in enumerate(y):
-
-        print('level', level)
         nodes, counts = np.unique(level, return_counts=True)
         n_cells = len(nodes)
         options = np.arange(n_cells * 2).reshape(-1,2)
@@ -180,12 +181,13 @@ def lineageSimulationImbalanced(label, tree_depth, num_sites, deletions_probs,
     simulation.add_node_labels(keep_labels)
     
     simulation.add_subsampled_ix(subsampled_ix)
-    
+   
     # Build a subsampled tree
 
     level_ix = subsampled_ix
+    
     # Create tips corresponding to each of the sampled cells
-    tips = [CellGroupNode(cell_names[-1][i]) for i in np.arange(len(level_ix))]
+    tips = [CellGroupNode(keep_labels[-1][i]) for i in np.arange(len(level_ix))]
 
     for j in range(tree_depth-1, -1, -1):
         # Map the subsampled cells from the preceding level as parents/children
@@ -207,8 +209,9 @@ def lineageSimulationImbalanced(label, tree_depth, num_sites, deletions_probs,
         child.parent = root
 
     true_tree = root
+    
     simulation.add_sampled_tree(true_tree)
-
+    
     # Simulating a tree: we start out with a single cell which is unmutated
     cell_recorder = np.zeros((num_init_cells, num_sites))
     min_depth = np.nan
@@ -240,12 +243,14 @@ def lineageSimulationImbalanced(label, tree_depth, num_sites, deletions_probs,
     
     if missing_fraction > 0:
         # Randomly drop mutations to introduce missingness in data 
-        prop = int(cell_r[-1].size * missing_fraction)
+        prop = int(record[-1].size * missing_fraction)
+        
+        print('drop', prop, record[-1].shape)
         #Randomly choose indices of the numpy array:
-        i = [random.choice(range(cell_r[-1].shape[0])) for _ in range(prop)]
-        j = [random.choice(range(cell_r[-1].shape[1])) for _ in range(prop)]
-
-        cell_r[-1][i,j] = np.NaN
+        i = [np.random.choice(range(record[-1].shape[0])) for _ in range(prop)]
+        j = [np.random.choice(range(record[-1].shape[1])) for _ in range(prop)]
+        
+        record[-1][i,j] = -1
 
     simulation.add_cell_record(record)
     simulation.add_edit_record(edits_made)
@@ -266,7 +271,8 @@ def lineageSimulationImbalanced(label, tree_depth, num_sites, deletions_probs,
     
     # Plot the number of available sites per generation 
     simulation.plot_open_sites()
-    final_cells = simulation.compute_final_cells()
+    
+    final_cells = simulation.get_final_cells()
     
     subsampled_edits = edits_made
     
@@ -317,7 +323,6 @@ def lineageSimulationImbalanced(label, tree_depth, num_sites, deletions_probs,
             print('identify_recurrent failed')
         
     simulation.runtime = time.time()-start
-    
     
     return simulation
 

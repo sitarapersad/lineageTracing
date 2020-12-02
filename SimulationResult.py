@@ -13,6 +13,8 @@ sns.set(font_scale=1)
 
 import networkx as nx
 from cassiopeia.TreeSolver.Node import Node
+
+from utilities import format_char_vec
         
 def load_simulation(path):
     simulation = SimulationResult
@@ -23,12 +25,10 @@ class SimulationResult():
         self.init_cells = init_cells
         self.run = run 
         self.missing_fraction = missing_fraction
-        
         self.tree_depth = tree_depth
         self.num_sites = num_sites
         
         self.edit_probs = edit_probs 
-        
         self._edit_prob_df = None
         
         self.unique_cells = None
@@ -36,7 +36,21 @@ class SimulationResult():
         
         self.feature_matrix = None
         self.random_attr = {}
-       
+        
+        self.impute_missing_data = False
+        
+        self.final_cells = None
+        self.final_cells_imputed = None
+        
+        self.true_tree = None
+        self.unimputed_tree = None
+        self.imputed_tree = None
+        
+        self.true_network = None
+        self.clean_network = None 
+        
+        self.verbose = True
+        
     def get_edit_probs(self):
         def dels_to_df(pad_dels):
             df = pd.DataFrame(pad_dels.reshape(-1)).T
@@ -47,33 +61,105 @@ class SimulationResult():
 
             df.columns = tt.reshape(-1)
             return df
-        
+ 
         if self._edit_prob_df is None:
             self._edit_prob_df = dels_to_df(self.edit_probs)
         return self._edit_prob_df
     
-    
-        
-    def add_full_cell_record(self, cr):
-        self.full_cell_record = cr
+    def imputation_on(self):
+        self.impute_missing_data = True
        
-    def get_full_cell_record(self):
-        return copy.deepcopy(self.full_cell_record)
+    def imputation_off(self):
+        self.impute_missing_data = False   
     
+    ### -- Methods for constructing and getting simulated tree -- ### 
     def add_sampled_tree(self, true_tree):
+        true_tree.prune()
         self.true_tree = true_tree
-       
-    def get_sampled_tree(self):
-        return copy.deepcopy(self.true_tree)
-    
-    def add_sampled_network(self):
         
-        def format_char_vec(a):
-            nan_a = np.isnan(a)
-            a = a.astype(np.int).astype(str)
-            a[nan_a] = '-'
-            return list(a)
+    def get_sampled_tree(self):
+        return self.true_tree.copy()
+    
+    def get_cleaned_tree(self):
+        if self.impute_missing_data:
+            if self.verbose:
+                print('Getting tree with imputed data.')
+            return self._get_imputed_tree()
+        else:
+            if self.verbose:
+                print('Getting tree with missing data.')
+            return self._get_unimputed_tree()
+            
+    def _get_unimputed_tree(self):
+        if self.unimputed_tree is None:
+            clean_tree = self.get_sampled_tree()
+            for x in clean_tree.tips():
+                # test whether tree is already annotated with cell record
+                try:
+                    y = x.char_matrix
+                    break
+                except:
+                    # Need to annotate tree with cell record
+                    
+                    final_cells = self._get_final_cells()
+                    
+                    for node in clean_tree.tips():
+                        try:
+                            node.add_character_matrix(pd.DataFrame(final_cells.loc[node.name]).T)
+                            node.get_features_from_characters()
+                        except KeyError:
+                            print(f'Could not find {node.name} in final_cells index')
+                    break 
+            # Clean duplicate nodes and rename nodes to match the character matrix
+            clean_tree.condense_duplicate_leaves()
+            unique_tips = {}
+            for node in clean_tree.tips():
+                if node.name in unique_tips:
+                    unique_tips[node.name] += 1
+                    node.name += f'-{unique_tips[node.name]}!'
+                else:
+                    unique_tips[node.name] = 1
+            self.unimputed_cross_branch_duplicates = unique_tips
+            self.unimputed_tree = clean_tree
 
+        return self.unimputed_tree.copy()
+    
+    def _get_imputed_tree(self):
+        if self.imputed_tree is None:
+            clean_tree = self.get_sampled_tree()
+            for x in clean_tree.tips():
+                # test whether tree is already annotated with cell record
+                try:
+                    y = x.char_matrix
+                    break
+                except:
+                    # Need to annotate tree with cell record
+                    
+                    final_cells = self._get_final_cells_imputed()
+                    
+                    for node in clean_tree.tips():
+                        try:
+                            node.add_character_matrix(pd.DataFrame(final_cells.loc[node.name]).T)
+                            node.get_features_from_characters()
+                        except KeyError:
+                            print(f'Could not find {node.name} in final_cells index')
+                    break 
+            # Clean duplicate nodes and rename nodes to match the character matrix
+            clean_tree.condense_duplicate_leaves()
+            unique_tips = {}
+            for node in clean_tree.tips():
+                if node.name in unique_tips:
+                    unique_tips[node.name] += 1
+                    node.name += f'-{unique_tips[node.name]}!'
+                else:
+                    unique_tips[node.name] = 1
+            self.imputed_cross_branch_duplicates = unique_tips
+            self.clean_tree = clean_tree
+
+        return self.clean_tree.copy()
+        
+    def add_sampled_network(self):
+   
         # Create networkx DiGraph to represent true_tree 
         tree = nx.DiGraph()
 
@@ -104,7 +190,89 @@ class SimulationResult():
 
     def get_sampled_network(self):
         return copy.deepcopy(self.true_network)
+    
+    
+    ## - Methods for accessing character_matrix --
+    def get_final_cells(self):
+        if self.impute_missing_data:
+            return self._get_final_cells_imputed()
+        return self._get_final_cells()
+    
+    
+    def _get_final_cells(self):
+        return self.final_cells.copy(deep=True)
+    
+    def _get_final_cells_imputed(self):
+        if self.final_cells_imputed is None:
+            character_matrix = self._get_final_cells()
+            character_matrix[character_matrix<0] = np.nan
+            from sklearn.impute import KNNImputer
+            imputer = KNNImputer(n_neighbors=3)
+            imputed = imputer.fit_transform(character_matrix)
+            character_matrix= pd.DataFrame(imputed, columns=character_matrix.columns).astype(int)
+            self.final_cells_imputed = character_matrix
+            self.final_cells_imputed.index = self.final_cells.index 
+            
+        return self.final_cells_imputed.copy(deep=True)
+    
+    def get_feature_matrix(self):
+        """ 
+        Convert the final cells matrix to a character matrix
+        Convert each unique (col, non-zero entry) into a character
+        """
         
+        if self.feature_matrix is None:
+            if self.impute_missing_data:
+                f = self.get_final_cells()
+            else:
+                f = self.get_final_cells_imputed()
+                
+            from utilities import binarize_character_matrix, character_matrix_to_labels
+            
+            str_labels = character_matrix_to_labels(f)
+            self.cell_id_to_char_vec = dict(zip(f.index, str_labels))
+            
+            inv_map = {}
+            for k, v in self.cell_id_to_char_vec.items():
+                inv_map[v] = inv_map.get(v, []) + [k]
+            self.char_vec_to_cell_id = inv_map
+            
+            f.index = str_labels
+            
+            self.feature_matrix = binarize_character_matrix(f)
+            
+        return copy.deepcopy(self.feature_matrix)
+
+
+
+    def add_subsampled_ix(self, ix):
+        self.subsampled_ix = ix
+        
+    def add_node_labels(self, labels):
+        self.node_labels = labels
+       
+    def get_node_labels(self):
+        return copy.deepcopy(self.node_labels)
+        
+    def add_parent_child_map(self, parent_child_map):
+        self.parent_child_map = parent_child_map
+        
+    def get_parent_child_map(self):
+        '''
+        Stores a list where the ith element maps the indices of children on level i+1 to the indices of their parents 
+        on level i
+        
+        e.g [{0:0,1:0}, {0:0, 1:1, 2:1}] would be the parent/child map for the tree:
+           __0_____0
+       0 _/      __1
+          \__1__/
+                \__2
+        '''
+        try:
+            return copy.deepcopy(self.parent_child_map)
+        except:
+            raise ValueError('No parent/child map stored') 
+    
     def add_full_edit_record(self, er):
         self.full_edit_record = er
         
@@ -239,65 +407,6 @@ class SimulationResult():
         fm = self.get_feature_matrix()
         fm.to_csv()
         
-    def get_final_cells(self):
-        return pd.copy(self.final_cells.astype(int), deep=True)
-    
-    def get_feature_matrix(self):
-        """ 
-        Convert the final cells matrix to a character matrix
-        Convert each unique (col, non-zero entry) into a character
-        """
-        
-        if self.feature_matrix is None:
-            f = self.get_final_cells()
-            
-            from utilities import binarize_character_matrix, character_matrix_to_labels
-            
-            str_labels = character_matrix_to_labels(f)
-            self.cell_id_to_char_vec = dict(zip(f.index, str_labels))
-            
-            inv_map = {}
-            for k, v in self.cell_id_to_char_vec.items():
-                inv_map[v] = inv_map.get(v, []) + [k]
-            self.char_vec_to_cell_id = inv_map
-            
-            f.index = str_labels
-            
-            
-            self.feature_matrix = binarize_character_matrix(f)
-            
-        return copy.deepcopy(self.feature_matrix)
-
-
-
-    def add_subsampled_ix(self, ix):
-        self.subsampled_ix = ix
-        
-    def add_node_labels(self, labels):
-        self.node_labels = labels
-       
-    def get_node_labels(self):
-        return copy.deepcopy(self.node_labels)
-        
-    def add_parent_child_map(self, parent_child_map):
-        self.parent_child_map = parent_child_map
-        
-    def get_parent_child_map(self):
-        '''
-        Stores a list where the ith element maps the indices of children on level i+1 to the indices of their parents 
-        on level i
-        
-        e.g [{0:0,1:0}, {0:0, 1:1, 2:1}] would be the parent/child map for the tree:
-           __0_____0
-       0 _/      __1
-          \__1__/
-                \__2
-        '''
-        try:
-            return copy.deepcopy(self.parent_child_map)
-        except:
-            raise ValueError('No parent/child map stored') 
-        
     def add_cell_record(self, cr):
         """
         Stores a subsampled cell record as a list of arrays, where the array at index g corresponds to generation g.
@@ -305,6 +414,15 @@ class SimulationResult():
         @param: cr - cell record, where cr[i] has shape (num_sites x num_cells) 
         """
         self.cell_record = cr 
+        
+        final_cells = pd.DataFrame(self.cell_record[-1])
+        keep_labels = self.get_node_labels()
+        self.final_cells = final_cells.astype(int)
+        self.final_cells.index = keep_labels[-1]
+        
+        return
+        
+        
         
     def get_cell_record(self):
         """
@@ -357,9 +475,7 @@ class SimulationResult():
                 unique_cells = final_cells.drop_duplicates().shape[0]/final_cells.shape[0]
                 unique_cell_per_gen.append(unique_cells)
                 
-            self.unique_cells = unique_cell_per_gen
-            self.final_cells = final_cells
-            
+            self.unique_cells = unique_cell_per_gen            
         return self.unique_cells
     
     def plot_unique_cells(self, save_as=None, display_plot=True):
@@ -388,18 +504,6 @@ class SimulationResult():
             plt.show()
         plt.close()
         
-        
-    def compute_final_cells(self):
-        final_cells = pd.DataFrame(self.cell_record[-1])
-        self.final_cells = final_cells.astype(int)
-        
-        self.final_cells = self.final_cells.drop_duplicates()
-        
-        return self.final_cells.copy(deep=True)
-    
-    def get_final_cells(self):
-        return copy.deepcopy(self.final_cells)
-
     def get_open_sites(self):
         if self.open_sites is None:
             open_sites = []

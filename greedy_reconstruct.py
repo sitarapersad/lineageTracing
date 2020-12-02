@@ -8,7 +8,8 @@ import pandas as pd
 def greedy_probabilistic(simulation,
                         impute_missing_data=False,
                         max_cells_per_greedy_node = 2,
-                        reassign = True):
+                        reassign = True,
+                        consensus_assignment = False):
     
     print('Reconstructing greedy tree')
     if impute_missing_data:
@@ -17,7 +18,7 @@ def greedy_probabilistic(simulation,
         simulation.imputation_off()
 
     true_tree = simulation.get_cleaned_tree()
-    
+
     print('Got true_tree')
     character_matrix = simulation.get_final_cells()
     character_matrix.drop_duplicates()
@@ -29,11 +30,11 @@ def greedy_probabilistic(simulation,
 
     # Convert character matrix to binary feature matrix for neighbour joining 
     feature_matrix = utilities.binarize_character_matrix(character_matrix)
-    
+
     dels_probs = simulation.get_edit_probs()
     prob_features = dels_probs[feature_matrix.columns].values
 
-    
+
     # Split by most frequently occuring character until cell groups are small enough to do neighbour joining efficiently. 
     def recursive_split(fm, cm):
         if fm.shape[0] <= max_cells_per_greedy_node:
@@ -96,7 +97,7 @@ def greedy_probabilistic(simulation,
 
     print('Computing score before reassignment.')
     leaves = [x for x in star_tree.tips()]
-    
+
     muts_in_leaf = []
     for i, leaf in enumerate(leaves):
         # Determine consensus of leaf, aka which mutations are present in all cells in the group.
@@ -129,18 +130,33 @@ def greedy_probabilistic(simulation,
         for i, leaf in enumerate(leaves):
             fm.append(leaf.feature_matrix)
             cm.append(leaf.get_character_matrix())
+            if cm[-1].shape[1] != 30:
+                assert False
+
             original_leaf += [i]*len(fm[-1])
+
+
         fm = pd.concat(fm, axis=0)
         cm = pd.concat(cm, axis=0)
 
 
 
         original_leaf = np.array(original_leaf)
+        muts_in_leaf = np.vstack(muts_in_leaf).T
 
-        leaf_agreement = np.dot(fm.values, np.vstack(muts_in_leaf).T)
-        new_assignments = leaf_agreement.argmax(1)
+        if consensus_assignment:
+            # Assign cells based on the number of shared mutations with each leaf
+            leaf_agreement = np.dot(fm[leaf.feature_matrix.columns].values, muts_in_leaf)
+            new_assignments = leaf_agreement.argmax(1)
+
+        else:
+            # For each leaf, look at all the mutations it contains. 
+            # Compute the probability of a cell belonging there = prob(contains all these muts) 
+            prob_existing_edits = fm[leaf.feature_matrix.columns].values * prob_features
+            new_assignments = np.argmax(np.dot(np.nan_to_num(prob_existing_edits),muts_in_leaf), axis=1)
+
         changed_assignments = (new_assignments != original_leaf).sum()
-        print(f'Reassigned {changed_assignments} leaves out of a total of {len(new_assignments)} leaves.')
+        print(f'Reassigned {changed_assignments} cells out of a total of {len(new_assignments)} cells.')
 
         fm['Updated_CellGroup'] = new_assignments
         cm['Updated_CellGroup'] = new_assignments

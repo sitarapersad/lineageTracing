@@ -34,7 +34,6 @@ def cassiopeia_reconstruct(simulation):
     cass_tree, duplicates = utilities.convert_nx_to_tree(cass_network.network)
     
     our_score = utilities.triplets_correct(true_tree, cass_tree)
-
     print('Cassiopeia:', our_score)
 
     return cass_tree, {'our_score':our_score}

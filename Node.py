@@ -28,7 +28,7 @@ class CellGroupNode(TreeNode):
         A dataframe of character states, of length C for cells in this group. All Nodes in a tree should have the same number of characters.
         """
         if not isinstance(char_vec, pd.DataFrame):
-            char_vec = pd.DataFrame(char_vec)
+            char_vec = pd.DataFrame(char_vec).T
         self.char_matrix = char_vec 
     
     def get_character_matrix(self):
@@ -44,6 +44,9 @@ class CellGroupNode(TreeNode):
         A dataframe containing a binarized version of the character states for cells in this group. 
         The length of this depends on the number of unique character/site combinations
         """
+        if len(feature_matrix.shape)==1:
+            # Reshape into 2D array:
+            feature_matrix = pd.DataFrame(feature_matrix).T
         self.feature_matrix = feature_matrix
     
     def get_features_from_characters(self):

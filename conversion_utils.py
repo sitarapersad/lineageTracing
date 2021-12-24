@@ -82,10 +82,19 @@ def create_cass_tree(char_matrix, missing_state_indicator=-1, add_character_meta
  
     return tree
 
+# convert ete3 tree to a dendropy tree, with given taxon_namespace
+def ete_to_dendropy_bare(tree, taxon_namespace):
+    from dendropy import Tree as DTree
+    dendro_tree = DTree.get(data=tree.write(format=1), schema='newick', taxon_namespace=taxon_namespace) 
+    return dendro_tree
+
 # convert ete3 tree to a dendropy tree
 def ete_to_dendropy(tree):
     from dendropy import Tree as DTree
-    return DTree.get(data=tree.write(format=1), schema='newick')
+    char_matrix = ete_to_dendropy_cm(tree)
+    taxon_namespace = char_matrix.taxon_namespace
+    dendro_tree = DTree.get(data=tree.write(format=1), schema='newick', taxon_namespace=taxon_namespace) 
+    return dendro_tree, char_matrix
 
 # get a dendropy StandardCharacterMatrix from an ete3 tree.
 # done by mapping integer states to characters
@@ -95,16 +104,19 @@ def ete_to_dendropy_cm(tree):
     names = [str(leaf.name) for leaf in leaves]
     states = [leaf.cassette_state for leaf in leaves]
 
-    new_states = []
-    mapping = {"-":chr(0)}
-    counter = 1
+
+    counter = 0
+    mapping = {"-":int_to_char(counter)}
+    counter += 1
+
+    new_states=[]
     for state in states:
         new_state=[]
         for i in range(len(state)):
             if state[i] in mapping:
                 newchar = mapping[state[i]]
             else:
-                newchar = chr(counter)
+                newchar = int_to_char(counter)
                 mapping[state[i]] = newchar
                 counter += 1
             new_state.append(newchar)
@@ -116,5 +128,27 @@ def ete_to_dendropy_cm(tree):
     cassette_states = [''.join(state) for state in new_states]
     # print(cassette_states)
     char_dict = dict(zip(names, cassette_states))
-    alphabet = dendropy.datamodel.charstatemodel.StateAlphabet(''.join(map(chr,range(0,max_state+1))))
+    alphabet = dendropy.datamodel.charstatemodel.StateAlphabet(''.join(mapping.values()))
     return dendropy.StandardCharacterMatrix.from_dict(char_dict,default_state_alphabet=alphabet)
+
+def get_charset():
+    import string
+    numbers = [chr(i) for i in range(ord('0'),ord('9')+1)]
+    charset = list(string.ascii_letters) + numbers
+    return charset
+
+def char_to_int(char):
+    charset = get_charset() 
+    mapping = dict(zip(charset, range(0,len(charset))))
+    return mapping[char]
+
+def int_to_char(num):
+    charset = get_charset()
+    return charset[num]
+
+# convert the labels of cells in an ete3 tree to numbers
+def ete_labels_to_numbers(tree):
+    counter = 1
+    for node in tree.get_leaves():
+        node.name = counter
+        counter += 1
